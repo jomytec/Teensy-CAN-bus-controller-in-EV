@@ -16,19 +16,25 @@ void setup()
   pinMode(6, OUTPUT);                 // Low SOC lamp
   pinMode(9, OUTPUT);                 // MIL lamp
   pinMode(10, OUTPUT);                // Power limit lamp
-  pinMode(11, OUTPUT);                // Hazard lamp
-  pinMode(12, OUTPUT);                // Charge lamp
+  pinMode(11, OUTPUT);                // Charge lamp
+  pinMode(12, OUTPUT);                // Hazard lamp
   pinMode(30, OUTPUT);                // Motor ON gauge
   pinMode(31, OUTPUT);                // Radiator fan LOW speed
   // 22, PWM OUT,                        DTE gauge half 120Hz
   // 23, PWM OUT,                        SOC gauge 25 to 188
   // 25, PWM OUT,                        ECO gauge 25 to 188
   pinMode(led, OUTPUT);
-  analogWriteFrequency(23, 80);        //20kHz (80Hz Postal)
-  analogWriteFrequency(25, 80);        //20kHz (80Hz Postal)
+  analogWriteFrequency(23, 80);        // 20kHz (80Hz Postal)
+  analogWriteFrequency(25, 80);        // 20kHz (80Hz Postal)
   digitalWrite(led, HIGH);
   delay(1000);
-  Serial.println(F("CAN Bus Rx Teensy 3.2 72Mhz ver.8"));
+  Serial.println(F("InCar CAN Bus Rx Teensy 3.2 72Mhz ver.10"));
+  digitalWrite(11, HIGH);       // Charge lamp
+  digitalWrite(12, HIGH);       // Hazard lamp
+  digitalWrite(10, HIGH);       // Power limit lamp
+  digitalWrite(9, HIGH);        // MIL lamp
+  digitalWrite(6, HIGH);        // Low SOC lamp (Only active in run)
+  digitalWrite(5, HIGH);        // Low oil lamp
   delay(4000);
   digitalWrite(led, LOW);
 
@@ -58,11 +64,11 @@ void loop()
     if (rxmsg.id == 0x700)
     {
       digitalWrite(led, HIGH);
-      data[0] = rxmsg.buf[0];         // Hazard lamp
-      data[1] = rxmsg.buf[1];         // Charge lamp
+      data[0] = rxmsg.buf[0];         // Charge lamp
+      data[1] = rxmsg.buf[1];         // Hazard lamp
       data[2] = rxmsg.buf[2];         // Power limit lamp
       data[3] = rxmsg.buf[3];         // MIL lamp
-      data[4] = rxmsg.buf[4];         // Low SOC lamp
+      data[4] = rxmsg.buf[4];         // Low SOC lamp (Only active in run)
       data[5] = rxmsg.buf[5];         // Low oil lamp
       Serial.print(rxmsg.id, HEX);
       Serial.print(' ');
@@ -72,11 +78,11 @@ void loop()
       Serial.println ();
       no_data1 = 0;
       if (data[0] == 1)
-        digitalWrite(11, HIGH);       // Hazard lamp
+        digitalWrite(11, HIGH);       // Charge lamp
       else
         digitalWrite(11, LOW);
       if (data[1] == 1)
-        digitalWrite(12, HIGH);       // Charge lamp
+        digitalWrite(12, HIGH);       // Hazard lamp
       else
         digitalWrite(12, LOW);
       if (data[2] == 1)
@@ -88,7 +94,7 @@ void loop()
       else
         digitalWrite(9, LOW);
       if (data[4] == 1)
-        digitalWrite(6, HIGH);        // Low SOC lamp
+        digitalWrite(6, HIGH);        // Low SOC lamp (Only active in run)
       else
         digitalWrite(6, LOW);
       if (data[5] == 1)
@@ -103,7 +109,7 @@ void loop()
       data[0] = rxmsg.buf[0];            // SOC gauge PWM 25 to 188 (half 118)
       data[1] = rxmsg.buf[1];            // DTE gauge 31-210Hz (half 120Hz)
       data[2] = rxmsg.buf[2];            // Motor ON gauge 0/1
-      data[3] = rxmsg.buf[3];            // ECO gauge PWM 25 to 188 (Mid 118)
+      data[3] = rxmsg.buf[3];            // ECO gauge PWM 25 to 188 mid 118 (Only active in run)
       data[4] = rxmsg.buf[4];            // No cell temp to instrument cluster!
       data[5] = rxmsg.buf[5];            // Radiator LO fan relay
       Serial.print(rxmsg.id, HEX);
@@ -114,12 +120,15 @@ void loop()
       Serial.println ();
       no_data2 = 0;
 
+      data[0] = map(data[0], 0, 100, 25, 188);
       analogWrite(23, data[0]);           // SOC gauge 25 to 188
       tone (22, data[1]);                 // DTE gauge half 120Hz
-      if (data[2] > 20)
+      if (data[2] == 1)
         digitalWrite(30, HIGH);           // Motor ON gauge
-      analogWrite(25, data[3]);           // ECO gauge 25 to 188
-      if (data[5] > 25)
+      else
+        digitalWrite(30, LOW);
+      analogWrite(25, data[3]);           // ECO gauge 25 to 188 (Only active in run)
+      if (data[5] == 1)
         digitalWrite(31, HIGH);           // Radiator fan LOW speed
       else
         digitalWrite(31, LOW);
@@ -143,7 +152,7 @@ void loop()
   {
     Serial.print("701 ");
     Serial.println("---No data---");
-    digitalWrite(31, LOW);        // Radiator fan LOW speed
+    digitalWrite(30, LOW);        // Motor ON gauge
     digitalWrite(9, HIGH);        // MIL lamp
     delay(750);
     digitalWrite(9, LOW);         // MIL lamp
