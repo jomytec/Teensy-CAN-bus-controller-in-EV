@@ -1,91 +1,89 @@
 #include <FlexCAN_T4.h>
-FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16> can1;  // can1 port
-FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> can2;  // can2 port
+FlexCAN_T4<CAN1, RX_SIZE_256, TX_SIZE_16> can1;// can1 port
+FlexCAN_T4<CAN2, RX_SIZE_256, TX_SIZE_16> can2;// can2 port
 
-#include <FaBoLCD_PCF8574.h>                  // include the LCD library
+#include <FaBoLCD_PCF8574.h>                   // include the LCD library
 FaBoLCD_PCF8574 lcd;
 
 static CAN_message_t txmsg;
 static CAN_message_t rxmsg1;
 static CAN_message_t rxmsg2;
 String CANStr("");
-unsigned char data[6];                       // rxmsg2 size
-byte CAN_COUNT = 0;                          // CAN data counter for LED
+unsigned char data[6];                         // rxmsg2 size
+byte CAN_COUNT = 0;                            // Counter for CAN data LED blink
 int led = 13;
-int SOC = 25;                                // IAA SOC gauge PWM 25 to 188 (half 118)
-int DTE = 120;                               // IAA DTE gauge 31-210Hz (half 120Hz)
-int MOT_ON = 0;                              // IAA Motor ON gauge 0/1 (Inverter CAN mode off, run)
-int ECO = 118;                               // IAA ECO gauge PWM 25 to 188, mid 118 (Only active in run)
-int LO_FAN = 0;                              // IAA Radiator LO fan relay
+int SOC = 25;                                  // IAA SOC gauge PWM 25 to 188 (half 118)
+int DTE = 120;                                 // IAA DTE gauge 31-210Hz (half 120Hz)
+int MOT_ON = 0;                                // IAA Motor ON gauge 0/1 (Inverter CAN mode off, run)
+int ECO = 118;                                 // IAA ECO gauge PWM 25 to 188, mid 118 (Only active in run)
+int LO_FAN = 0;                                // IAA Radiator LO fan relay
 
-byte CHG_L = 0;                              // IAA Charge lamp
-byte HAZ_L = 0;                              // IAA Hazard lamp
-byte PWR_LIM_L = 0;                          // IAA Power limit lamp
-byte MIL_L = 0;                              // IAA MIL lamp
-byte LO_SOC_L = 0;                           // IAA Low SOC lamp (Only active in run)
-byte LO_OIL_L = 0;                           // IAA Low oil lamp
+byte CHG_L = 0;                                // IAA Charge lamp
+byte HAZ_L = 0;                                // IAA Hazard lamp
+byte PWR_LIM_L = 0;                            // IAA Power limit lamp
+byte MIL_L = 0;                                // IAA MIL lamp
+byte LO_SOC_L = 0;                             // IAA Low SOC lamp (Only active in run)
+byte LO_OIL_L = 0;                             // IAA Low oil lamp
 
-int VOLT = 0;                                // BMS pack volt
-int AMP = 0;                                 // BMS current sensor
-int CELL_TMP = 0;                            // BMS average cell temp
-int STORED_CELL_TMP = 0;                     // Stored average cell temp
-int MIN_CELL_TMP = 0;                        // BMS lowest cell temp
-int MAX_CELL_TMP = 0;                        // BMS highest cell temp
-byte CELL_TMP_CHANGE = 2;                    // Average cell temp, 1 - going up, 0 - going down.
-int CELL_TMP_COUNT = 200;
-int LO_CELL = 0;                             // BMS lowest cell
-int HI_CELL = 0;                             // BMS highest cell
-byte bmsstatus = 0;                          // BMS Boot 0, Ready 1, Drive 2, Charge 3, Precharge 4, Error 5, Bat_HC 6
+int VOLT = 0;                                  // BMS pack volt
+int AMP = 0;                                   // BMS current sensor
+int CELL_TMP = 0;                              // BMS average cell temp
+int STORED_CELL_TMP = 0;                       // Stored average cell temp
+int MIN_CELL_TMP = 0;                          // BMS lowest cell temp
+int MAX_CELL_TMP = 0;                          // BMS highest cell temp
+int CELL_TMP_COUNT = 200;                      // Time between cell temp reading
+int CELL_TMP_CHANGE = 0;                       // Cell temp over time change ( / 100 for C)
+int LO_CELL = 0;                               // BMS lowest cell
+int HI_CELL = 0;                               // BMS highest cell
+byte bmsstatus = 0;                            // BMS Boot 0, Ready 1, Drive 2, Charge 3, Precharge 4, Error 5, Bat_HC 6
 
-int AUX_V = 0;                               // Inverter CAN AUX volt (12V battery)
-int tmphs = 0;                               // Inverter CAN heatsink temp neg/pos
-int tmpm = 0;                                // Inverter CAN motor temp neg/pos
-byte DIR = 0;                                // Inverter CAN direction/gear
-int RPM = 0;                                 // Inverter CAN RPM
+int AUX_V = 0;                                 // Inverter CAN AUX volt (12V battery)
+int tmphs = 0;                                 // Inverter CAN heatsink temp neg/pos
+int tmpm = 0;                                  // Inverter CAN motor temp neg/pos
+byte DIR = 0;                                  // Inverter CAN direction/gear
+int RPM = 0;                                   // Inverter CAN RPM
 
-int OILPR = 0;
+int OILPR = 0;                                 // Oil pressure sensor
 int CAB = 0;
-int TEC_V0;
+int TEC_V0;                                    // Voltage for caculating temp
 int TEC_V1;
 int TEC_V2;
-int TEC_pwm = 20;                             // Check if PWM is 1kHz!!
-float TEC_R1 = 100000;                        // 3.3V-100k NTC-sig-100k-GND
+int TEC_pwm = 20;                              // Check if PWM is 1kHz!!
+float TEC_R1 = 100000;                         // 3.3V-100k NTC-sig-100k-GND
 float TEC_logR2, TEC_R2, TEC_T0, TEC_T1, TEC_T2;
 float TEC_A = 0.8158589285e-03, TEC_B = 2.076952932e-04, TEC_C = 0.9631468832e-07; // NTCLE203E3104GB0 -  Thermistor, NTC, 100 kohm, NTCLE Series, 4190 K
-byte TEC_RLY = 1;                             // TEC PSU relay on/off (Waterpump bat pack)
-int TEC_COUNT = 0;                            // TEC temp delay counter
-int OUT_tmp_factor = 0;
+byte TEC_RLY = 1;                              // TEC PSU relay on/off (Waterpump bat pack)
 
-long Watt = 0;                                // Calculated Watt neg/pos
-int kmh = 0;                                  // Calculated km/h
-int Whkm = 0;                                 // Calculated current Wh/km (neg/pos)
-int Whkm_trip = 0;                            // Calculated trip Wh/km (neg/pos)
-long Whkm_count = 0;                          // Counter to calculate trip Wh/km (neg/pos)
-long loop_count = 0;                          // Counter for CAN read loops
+long Watt = 0;                                 // Calculated Watt neg/pos
+int kmh = 0;                                   // Calculated km/h
+int Whkm = 0;                                  // Calculated current Wh/km (neg/pos)
+int Whkm_trip = 0;                             // Calculated trip Wh/km (neg/pos)
+long Whkm_count = 0;                           // Counter to calculate trip Wh/km (neg/pos)
+long loop_count = 0;                           // Counter for CAN read loops
 
-byte buttonCount = 3;                         // counter for number of button presses
-byte buttonState = 0;                         // current state of the button
-byte lastButtonState = 1;                     // previous state of the button
-unsigned long lastDebounceTime = 0;           // the last time the button was pressed
-unsigned long debounceDelay = 50;             // the debounce time
+byte buttonCount = 3;                          // counter for number of button presses
+byte buttonState = 0;                          // current state of the button
+byte lastButtonState = 1;                      // previous state of the button
+unsigned long lastDebounceTime = 0;            // the last time the button was pressed
+unsigned long debounceDelay = 50;              // the debounce time
 
 void setup()
 {
   can1.begin();
-  can1.setBaudRate(500000);                   // 500kbps data rate
+  can1.setBaudRate(500000);                    // 500kbps data rate
   can2.begin();
-  can2.setBaudRate(500000);                   // 500kbps data rate
-  pinMode(A0, INPUT);                         // Must set on Teensy 4.0 (disable internal pullup)
-  pinMode(A10, INPUT);                        // TEC outside temp
-  pinMode(A12, INPUT);                        // TEC cold temp
-  pinMode(A13, INPUT);                        // TEC hot temp
-  pinMode(32, INPUT_PULLUP);                  // menu button Z/GND (20-50k pullup)
-  pinMode(16, OUTPUT);                        // TEC PSU relay (Waterpump bat pack)
-  pinMode(12, OUTPUT);                        // TEC Main colant waterpump (in AC only bat heat/cool)
+  can2.setBaudRate(500000);                    // 500kbps data rate
+  pinMode(A0, INPUT);                          // Must set on Teensy 4.0 (disable internal pullup)
+  pinMode(A10, INPUT);                         // TEC outside temp
+  pinMode(A12, INPUT);                         // TEC cold temp
+  pinMode(A13, INPUT);                         // TEC hot temp
+  pinMode(32, INPUT_PULLUP);                   // menu button Z/GND (20-50k pullup)
+  pinMode(16, OUTPUT);                         // TEC PSU relay (Waterpump bat pack)
+  pinMode(12, OUTPUT);                         // TEC Main colant waterpump (in AC only bat heat/cool)
   pinMode(led, OUTPUT);
   digitalWrite(led, HIGH);
-  lcd.begin(16, 2);                           // set up columns and rows
-  lcd.print(" CanLcd ver: 2.1");              // send version to the LCD.
+  lcd.begin(16, 2);                            // set up columns and rows
+  lcd.print(" CanLcd ver: 2.4");               // send version to the LCD.
   lcd.setCursor(0, 1);
   lcd.print((char) 255);
   delay(200);
@@ -119,7 +117,7 @@ void setup()
   delay(200);
   lcd.print((char) 255);
   delay(200);
-  Serial.println(F("InCar BMS INV IAA CAN-Tx/Rx Teensy 4.0 150Mhz ver.21"));
+  Serial.println(F("InCar BMS INV IAA CAN-Tx/Rx Teensy 4.0 150Mhz ver.24"));
   delay(1000);
   lcd.clear();
   digitalWrite(led, LOW);
@@ -127,28 +125,28 @@ void setup()
 
 void loop()
 {
-  if (CAN_COUNT == 1)                         // CAN data counter for LED
+  if (CAN_COUNT == 1)                          //  Counter for CAN data LED blink
     digitalWrite(led, HIGH);
 
-  int BUT_READ = digitalRead(32);             // Read pushbutton state
-  if (BUT_READ != lastButtonState)            // If button pressed
-    lastDebounceTime = millis();              // reset the debouncing timer
+  int BUT_READ = digitalRead(32);              // Read pushbutton state
+  if (BUT_READ != lastButtonState)             // If button pressed
+    lastDebounceTime = millis();               // reset the debouncing timer
   if ((millis() - lastDebounceTime) > debounceDelay)
   {
-    if (BUT_READ != buttonState)              // if the button state has changed:
+    if (BUT_READ != buttonState)               // if the button state has changed
     {
       buttonState = BUT_READ;
-      if (buttonState == LOW)                 // if the state has changed
-        buttonCount++;                        // Increment the counter
+      if (buttonState == LOW)                  // if the state has changed
+        buttonCount++;                         // Increment the counter
     }
   }
-  lastButtonState = BUT_READ;                 // save state as last state, for next loop
-  if (buttonCount > 3)                        // Last screen
-    buttonCount = 0;                          // Back to first screen
+  lastButtonState = BUT_READ;                  // save state as last state, for next loop
+  if (buttonCount > 3)                         // Last screen
+    buttonCount = 0;                           // Back to first screen
 
-  if (buttonState == LOW)                     // if the state has changed, show sreen names
+  if (buttonState == LOW)                      // if the state has changed, show sreen names
   {
-    if (buttonCount == 0)                     // Screen "BATTERY"
+    if (buttonCount == 0)                      // Screen "BATTERY"
     {
       lcd.clear();
       lcd.setCursor(5, 0);
@@ -157,7 +155,7 @@ void loop()
       lcd.setCursor(5, 0);
       lcd.print("       ");
     }
-    if (buttonCount == 1)                     // Screen "ENERGY"
+    if (buttonCount == 1)                      // Screen "ENERGY"
     {
       lcd.clear();
       lcd.setCursor(5, 0);
@@ -166,7 +164,7 @@ void loop()
       lcd.setCursor(5, 0);
       lcd.print("      ");
     }
-    if (buttonCount == 2)                     // Screen "MOTOR"
+    if (buttonCount == 2)                      // Screen "MOTOR"
     {
       lcd.clear();
       lcd.setCursor(5, 0);
@@ -175,7 +173,7 @@ void loop()
       lcd.setCursor(5, 0);
       lcd.print("     ");
     }
-    if (buttonCount == 3)                     // Screen "BATTERY H/C"
+    if (buttonCount == 3)                      // Screen "BATTERY H/C"
     {
       lcd.clear();
       lcd.setCursor(2, 0);
@@ -250,22 +248,22 @@ void loop()
       Serial.print(' ');
       Serial.print(CANStr);
       Serial.println ();
-      LO_CELL = (uint8_t)data[1] << 8;        // read byte 1 << bitshift left
-      LO_CELL |= data[0];                     // read byte 0
+      LO_CELL = (uint8_t)data[1] << 8;         // read byte 1 << bitshift left
+      LO_CELL |= data[0];                      // read byte 0
       Serial.print("LO_CELL: ");
-      Serial.println(LO_CELL);                // DEBUG TEST
-      HI_CELL = (uint8_t)data[3] << 8;        // read byte 1 << bitshift left
-      HI_CELL |= data[2];                     // read byte 0
+      Serial.println(LO_CELL);                 // DEBUG TEST
+      HI_CELL = (uint8_t)data[3] << 8;         // read byte 1 << bitshift left
+      HI_CELL |= data[2];                      // read byte 0
       Serial.print("HI_CELL: ");
-      Serial.println(HI_CELL);                // DEBUG TEST
-      MIN_CELL_TMP = (uint8_t)data[5] << 8;   // read byte 5 << bitshift left
-      MIN_CELL_TMP |= data[4];                // read byte 4
+      Serial.println(HI_CELL);                 // DEBUG TEST
+      MIN_CELL_TMP = (uint8_t)data[5] << 8;    // read byte 5 << bitshift left
+      MIN_CELL_TMP |= data[4];                 // read byte 4
       Serial.print("MIN CELL TMP: ");          // DEBUG TEST
-      Serial.println(MIN_CELL_TMP);           // DEBUG TEST
-      MAX_CELL_TMP = (uint8_t)data[7] << 8;   // read byte 7 << bitshift left
-      MAX_CELL_TMP |= data[6];                // read byte 6
+      Serial.println(MIN_CELL_TMP);            // DEBUG TEST
+      MAX_CELL_TMP = (uint8_t)data[7] << 8;    // read byte 7 << bitshift left
+      MAX_CELL_TMP |= data[6];                 // read byte 6
       Serial.print("MAX CELL TMP: ");          // DEBUG TEST
-      Serial.println(MAX_CELL_TMP);           // DEBUG TEST
+      Serial.println(MAX_CELL_TMP);            // DEBUG TEST
     }
 
     if (rxmsg2.id == 0x300)                    // CAN current sensor 0x3C2 DEBUG TEST
@@ -285,9 +283,9 @@ void loop()
       Serial.print(CANStr);
       Serial.println ();
 
-      CAB = (uint8_t)data[1] << 8;            // read byte 1 << bitshift left
+      CAB = (uint8_t)data[1] << 8;             // read byte 1 << bitshift left
       Serial.println(CAB, HEX);
-      CAB |= data[2];                         // read byte 0
+      CAB |= data[2];                          // read byte 0
       Serial.println(CAB, HEX);
       CAB = (uint8_t)CAB << 8;
       Serial.println(CAB, HEX);
@@ -419,69 +417,42 @@ void loop()
       Serial.print(CANStr);
       Serial.println ();
 
-      VOLT = (uint8_t)data[1] << 8;           // read byte 1 << bitshift left
-      VOLT |= data[0];                        // read byte 0
+      VOLT = (uint8_t)data[1] << 8;            // read byte 1 << bitshift left
+      VOLT |= data[0];                         // read byte 0
       Serial.print("PACK VOLT: ");
-      Serial.println(VOLT);                   // DEBUG TEST
+      Serial.println(VOLT);                    // DEBUG TEST
       //      lcd.setCursor(0, 1);
       //      sprintf(buf_LCD, "%d.%dv", VOLT / 100, VOLT / 10 % 10);
       //      lcd.print(buf_LCD);
 
-      AMP = (uint8_t)data[3] << 8;            // read byte 3 << bitshift left
-      AMP |= data[2];                         // read byte 2
-      AMP = (AMP * -1);                       // (/10 for actual value)
+      AMP = (uint8_t)data[3] << 8;             // read byte 3 << bitshift left
+      AMP |= data[2];                          // read byte 2
+      AMP = (AMP * -1);                        // (/10 for actual value)
       Serial.print("AMP: ");
-      Serial.println(AMP);                    // DEBUG TEST
+      Serial.println(AMP);                     // DEBUG TEST
       //      lcd.setCursor(7, 1);
       //      sprintf(buf_LCD, "%d.%dA", AMP / 10, AMP % 10);
       //      lcd.print(buf_LCD);
-      CELL_TMP = (uint8_t)data[5] << 8;       // read byte 5 << bitshift left
-      CELL_TMP |= data[4];                    // read byte 4
-      Serial.print("CELL TMP: ");             // DEBUG TEST
-      Serial.println(CELL_TMP);               // DEBUG TEST
-      Serial.print("STORED CELL TMP: ");      // DEBUG TEST
-      Serial.println(STORED_CELL_TMP);        // DEBUG TEST
+      CELL_TMP = (uint8_t)data[5] << 8;        // read byte 5 << bitshift left
+      CELL_TMP |= data[4];                     // read byte 4
+      Serial.print("CELL TMP: ");              // DEBUG TEST
+      Serial.println(CELL_TMP);                // DEBUG TEST
+      Serial.print("STORED CELL TMP: ");       // DEBUG TEST
+      Serial.println(STORED_CELL_TMP);         // DEBUG TEST
 
       //      lcd.setCursor(0, 0);                    // Program halt!!??? If moved ut to SOC
       //      lcd.print(SOC);
       //      lcd.print("%");
-      if (CELL_TMP_COUNT > 150)                    // Avoid STORED_CELL_TMP zero at startup
-        STORED_CELL_TMP = CELL_TMP;
-      if (CELL_TMP < STORED_CELL_TMP)
-      {
-        CELL_TMP_CHANGE = 0;
-        if (CELL_TMP_COUNT > 1)
-          CELL_TMP_COUNT = 0;
-        Serial.println("CELL TMP: GOING DOWN ");          // DEBUG TEST
-      }
-      if (CELL_TMP > STORED_CELL_TMP)
-      {
-        CELL_TMP_CHANGE = 1;
-        if (CELL_TMP_COUNT > 1)
-          CELL_TMP_COUNT = 0;
-        Serial.println("CELL TMP: GOING UP ");          // DEBUG TEST
-      }
-      if (CELL_TMP == STORED_CELL_TMP)
-      {
-        CELL_TMP_CHANGE = 2;
-        Serial.println("CELL TMP: STABLE ");          // DEBUG TEST
-      }
-      if (CELL_TMP_COUNT > 120)
-      {
-        STORED_CELL_TMP = CELL_TMP;
-        CELL_TMP_COUNT = 0;
-      }
-      CELL_TMP_COUNT++;
 
       //Send CAN data for every receive of BMS CAN id 0x356
       txmsg.len = 8;
       txmsg.id = 0x700;
-      txmsg.buf[0] = 0;                       // Charge lamp
-      txmsg.buf[1] = HAZ_L;                   // Hazard lamp
-      txmsg.buf[2] = 0;                       // Power limit lamp
-      txmsg.buf[3] = 0;                       // MIL lamp
-      txmsg.buf[4] = 0;                       // Low SOC lamp (Only active in run)
-      txmsg.buf[5] = LO_OIL_L;                // Low oil lamp
+      txmsg.buf[0] = 0;                        // Charge lamp
+      txmsg.buf[1] = HAZ_L;                    // Hazard lamp
+      txmsg.buf[2] = 0;                        // Power limit lamp
+      txmsg.buf[3] = 0;                        // MIL lamp
+      txmsg.buf[4] = 0;                        // Low SOC lamp (Only active in run)
+      txmsg.buf[5] = LO_OIL_L;                 // Low oil lamp
       txmsg.buf[6] = 0;
       txmsg.buf[7] = 0;
       Serial.print("IAA LAMPS: ");
@@ -500,16 +471,16 @@ void loop()
       Serial.print(txmsg.buf[4]);
       Serial.print(' ');
       Serial.println(txmsg.buf[5]);
-      can1.write(txmsg);                      // Transmit first CAN data
+      can1.write(txmsg);                       // Transmit first CAN data
 
       txmsg.len = 8;
       txmsg.id = 0x701;
-      txmsg.buf[0] = SOC;                     // SOC gauge PWM 25 to 188 (half 118)
-      txmsg.buf[1] = DTE;                     // DTE gauge 31-210Hz (half 120Hz)
-      txmsg.buf[2] = MOT_ON;                  // Motor ON gauge 0/1
-      txmsg.buf[3] = ECO;                     // ECO gauge PWM 25 to 188 (Only active in run)
-      txmsg.buf[4] = 0;                       // No cell temp to instrument cluster!
-      txmsg.buf[5] = LO_FAN;                  // Radiator LO fan relay
+      txmsg.buf[0] = SOC;                      // SOC gauge PWM 25 to 188 (half 118)
+      txmsg.buf[1] = DTE;                      // DTE gauge 31-210Hz (half 120Hz)
+      txmsg.buf[2] = MOT_ON;                   // Motor ON gauge 0/1
+      txmsg.buf[3] = ECO;                      // ECO gauge PWM 25 to 188 (Only active in run)
+      txmsg.buf[4] = 0;                        // No cell temp to instrument cluster!
+      txmsg.buf[5] = LO_FAN;                   // Radiator LO fan relay
       txmsg.buf[6] = 0;
       txmsg.buf[7] = 0;
       Serial.print("IAA GAUGES: ");
@@ -528,13 +499,13 @@ void loop()
       Serial.print(txmsg.buf[4], HEX);
       Serial.print(' ');
       Serial.println(txmsg.buf[5], HEX);
-      can1.write(txmsg);                      //Transmit next CAN data
+      can1.write(txmsg);                       //Transmit next CAN data
 
       // Read outside temp for every receive of BMS CAN id 0x356
-      TEC_V2 = analogRead(A10);               // NTC sensor outside
+      TEC_V2 = analogRead(A10);                // NTC sensor outside
       TEC_R2 = TEC_R1 * (1023.0 / (float)TEC_V2 - 1.0);
       TEC_T2 = (1.0 / (TEC_A + TEC_B * log(TEC_R2) + TEC_C * log(TEC_R2) * log(TEC_R2) * log(TEC_R2)));   // Steinhart and Hart Equation. T  = 1 / {A + B[ln(R)] + C[ln(R)]^3}
-      TEC_T2 = TEC_T2 - 273.15;               // Convert to C
+      TEC_T2 = TEC_T2 - 273.15;                // Convert to C
       Serial.print("OUT: ");
       Serial.print(TEC_T2);
       Serial.print("C  ");
@@ -543,85 +514,88 @@ void loop()
       //      lcd.print("C");
 
       // Temp control TEC heat/cool for every receive of BMS CAN id 0x356
-      if ((TEC_T1 > 50 || TEC_T0 < -10) || (CELL_TMP > 2500 && TEC_pwm == 20))        // Decrease power if temp to high/low
+      Serial.print("CELL_TMP_COUNT: ");
+      Serial.print(CELL_TMP_COUNT);          // DEBUG TEST
+      if (CELL_TMP_COUNT > 150)                // Avoid STORED_CELL_TMP zero at startup
+      {
+        STORED_CELL_TMP = CELL_TMP;
+        CELL_TMP_COUNT = 0;
+      }
+      CELL_TMP_COUNT++;                        // Increment
+      if (CELL_TMP_COUNT > 110)
+      {
+        CELL_TMP_CHANGE = CELL_TMP - STORED_CELL_TMP; //Cell temp change between CELL_TMP_COUNT
+        STORED_CELL_TMP = CELL_TMP;
+        CELL_TMP_COUNT = 0;
+      }
+      Serial.print(" TMP_CHANGE: ");            // DEBUG TEST
+      Serial.println(CELL_TMP_CHANGE);         // DEBUG TEST
+
+      if ((TEC_T1 > 50 || TEC_T0 < -10) || (CELL_TMP > 2500 && TEC_pwm == 20))        // Turn off if PWM is minimum and temp to high/low
       {
         TEC_pwm = 0;
-        TEC_RLY = 0;                          // TEC PSU relay on/off
-        digitalWrite(16, LOW);                // TEC PSU relay (Waterpump bat pack)
-        digitalWrite(12, LOW);                // TEC Main colant waterpump (in AC only bat heat/cool)
-
+        TEC_RLY = 0;                           // TEC PSU relay on/off
+        digitalWrite(16, LOW);                 // TEC PSU relay (Waterpump bat pack)
+        digitalWrite(12, LOW);                 // TEC Main colant waterpump (in AC only bat heat/cool)
         Serial.println("TEC OFF");
 
       }
-      if (TEC_RLY == 1 && CELL_TMP < 2500)     //
+      if (TEC_RLY == 1 && CELL_TMP < 2500)     // Don't heat if over 25C
       {
-        digitalWrite(16, HIGH);               // TEC PSU relay (Waterpump bat pack)
-        digitalWrite(12, HIGH);               // TEC Main colant waterpump (in AC only bat heat/cool)
-        OUT_tmp_factor = map(TEC_T2, - 20, 50, 10, 200);
-        TEC_COUNT ++;                         // TEC temp delay counter
-        if (TEC_COUNT > OUT_tmp_factor)       // TEC temp delay counter
-          TEC_COUNT = 0;                      // TEC temp delay counter reset
-        Serial.print("tmp_factor: ");
-        Serial.print(OUT_tmp_factor);
-        Serial.print("  Sec: ");
-        Serial.println(TEC_COUNT);
+        digitalWrite(16, HIGH);                // TEC PSU relay (Waterpump bat pack)
+        digitalWrite(12, HIGH);                // TEC Main colant waterpump (in AC only bat heat/cool)
 
-        TEC_V0 = analogRead(A12);             // TEC NTC sensor cold (bottom plate)
+        TEC_V0 = analogRead(A12);              // TEC NTC sensor cold (bottom plate)
         TEC_R2 = TEC_R1 * (1023.0 / (float)TEC_V0 - 1.0);
         TEC_T0 = (1.0 / (TEC_A + TEC_B * log(TEC_R2) + TEC_C * log(TEC_R2) * log(TEC_R2) * log(TEC_R2)));   // Steinhart and Hart Equation. T  = 1 / {A + B[ln(R)] + C[ln(R)]^3}
-        TEC_T0 = TEC_T0 - 273.15;             // Convert to C
+        TEC_T0 = TEC_T0 - 273.15;              // Convert to C
         Serial.print("COLD: ");
         Serial.print(TEC_T0);
         Serial.print("C  ");
 
-        TEC_V1 = analogRead(A13);             // TEC NTC sensor hot (top plate)
+        TEC_V1 = analogRead(A13);              // TEC NTC sensor hot (top plate)
         TEC_R2 = TEC_R1 * (1023.0 / (float)TEC_V1 - 1.0);
         TEC_T1 = (1.0 / (TEC_A + TEC_B * log(TEC_R2) + TEC_C * log(TEC_R2) * log(TEC_R2) * log(TEC_R2)));   // Steinhart and Hart Equation. T  = 1 / {A + B[ln(R)] + C[ln(R)]^3}
-        TEC_T1 = TEC_T1 - 273.15;             // Convert to C
+        TEC_T1 = TEC_T1 - 273.15;              // Convert to C
         Serial.print("HOT: ");
         Serial.print(TEC_T1);
         Serial.print("C  ");
 
-        if (CELL_TMP < 1800 && TEC_T1 < 40 && TEC_COUNT == 0)  // Increase power for every TEC_COUNT, if temp reach min
-          TEC_pwm = (TEC_pwm + 1);
-        if (CELL_TMP > 1805)             //
+        if (CELL_TMP_COUNT == 100 && TEC_T1 < 40)     // Change power for every CELL_TMP_COUNT, and TEC temp under max
         {
-          if (CELL_TMP_CHANGE == 1)      // CELL TMP GOING UP
-            TEC_pwm = (TEC_pwm - 1);
-          if (CELL_TMP_CHANGE == 0)      // CELL TMP GOING DOWN
+          if (CELL_TMP <= 1800)                // Increase power
             TEC_pwm = (TEC_pwm + 1);
-        }
-        if (CELL_TMP > 1820 && TEC_COUNT == 0 || (TEC_T1 > 40 && TEC_COUNT == 0))   // Decrease power for every TEC_COUNT, if temp reach min
+          if (CELL_TMP >= 1820)                // Decrease power
+            TEC_pwm = (TEC_pwm - 1);
 
-          TEC_pwm = (TEC_pwm - 1);
-        if (CELL_TMP < 1815)             //
-        {
-          if (CELL_TMP_CHANGE == 1)      // CELL TMP GOING UP
-            TEC_pwm = (TEC_pwm - 1);
-          if (CELL_TMP_CHANGE == 0)      // CELL TMP GOING DOWN
-            TEC_pwm = (TEC_pwm + 1);
+          if (CELL_TMP > 1800 && CELL_TMP < 1820)  //
+          {
+            if (CELL_TMP_CHANGE > 0)           // CELL TMP GOING UP
+              TEC_pwm = (TEC_pwm - 1);
+            if (CELL_TMP_CHANGE < 0)           // CELL TMP GOING DOWN
+              TEC_pwm = (TEC_pwm + 1);
+          }
         }
 
-
-        TEC_pwm = constrain (TEC_pwm, 20, 150); // Min Pos duty for PSU is 10% (20)
+        TEC_pwm = constrain (TEC_pwm, 20, 150);// Min Pos duty for PSU is 10% (20)
         analogWrite (3, TEC_pwm);
         Serial.print(" PWM: ");
         Serial.println(TEC_pwm);
 
-        if (buttonCount == 0 || buttonCount == 1)   // BATTERY/ENERGY screen
+        if (buttonCount == 0 || buttonCount == 1) // BATTERY/ENERGY screen
         {
           lcd.setCursor(0, 0);
-          lcd.print(SOC);                     // Range is 0-100%
+          lcd.print(SOC);                      // Range is 0-100%
           if (SOC < 100)
             lcd.print("%");
           if (SOC < 10)
             lcd.print(" ");
 
-          if (buttonCount == 0)               // BATTERY screen
+          if (buttonCount == 0)                // BATTERY screen
           {
             // Amp
             lcd.setCursor(4, 0);
-            if (bmsstatus == 2)               // BMS Drive 2
+            if (bmsstatus == 2)                // BMS Drive 2
               lcd.print(AMP / 10);
             else
               sprintf(buf_LCD, "%d.%d", AMP / 10, AMP % 10);
@@ -630,7 +604,7 @@ void loop()
             if (AMP < 100)
               lcd.print(" ");
             if (AMP < 10)
-              lcd.print(" ");                 // print space (to clear old value)
+              lcd.print(" ");                  // print space (to clear old value)
             // Pack Volt
             lcd.setCursor(0, 1);
             sprintf(buf_LCD, "%dv", VOLT);
@@ -642,11 +616,11 @@ void loop()
             lcd.print(buf_LCD);
           }
 
-          if (buttonCount == 1)               // Screen "ENERGY"
+          if (buttonCount == 1)                // Screen "ENERGY"
             // Wh/km
             lcd.setCursor(5, 0);
           // Check if this is needed!?
-          if (kmh > 0)                        // Avoid -1 reading when kmh = 0 (no divide with zero)
+          if (kmh > 0)                         // Avoid -1 reading when kmh = 0 (no divide with zero)
           {
             sprintf(buf_LCD, "%d/", Whkm);
             lcd.print(buf_LCD);
@@ -654,7 +628,7 @@ void loop()
           // Check if this is needed!?
           else
             lcd.print("0/");
-          if (loop_count > 0)                 // if loop has started (trip started)
+          if (loop_count > 0)                  // if loop has started (trip started)
           {
             sprintf(buf_LCD, "%dWhkm    ", Whkm_trip); // "0/0Whkm    " print space (to clear old value)
             lcd.print(buf_LCD);
@@ -662,49 +636,61 @@ void loop()
           else
             lcd.print("0Whkm");
 
-          if (loop_count > 0)                 // if loop has started (trip started)
+          if (loop_count > 0)                  // if loop has started (trip started)
           {
             Whkm_trip = (Whkm_count / (loop_count));  // calculate average Wh/km for whole trip
             Serial.print("Wh/km trip: ");
-            Serial.println(Whkm_trip);        // DEBUG TEST
+            Serial.println(Whkm_trip);         // DEBUG TEST
           }
           // SOC bar
-          byte SOC_bar_count = 0;             // Soc bar counter (0-16)
+          byte SOC_bar_count = 0;              // Soc bar counter (0-16)
           byte SOC_bar = map(SOC, 1, 100, 0, 16); // Tested 1 block is 8%, 15 blocks is 94%
           lcd.setCursor(0, 1);
           for (SOC_bar_count = 0; SOC_bar > SOC_bar_count; SOC_bar_count++)   // count from 0 up to SOC_bar
-            lcd.print((char) 255);            // print block
+            lcd.print((char) 255);             // print block
           for (SOC_bar_count = 16; SOC_bar < SOC_bar_count; SOC_bar_count--)  // count from 15 down to SOC_bar
-            lcd.print(" ");                   // print space (to clear old value)
+            lcd.print(" ");                    // print space (to clear old value)
         }
 
-        if (buttonCount == 3)                 // Screen "BATTERY H/C"
+        if (buttonCount == 3)                  // Screen "BATTERY H/C"
         {
           lcd.setCursor(0, 0);
-          sprintf(buf_LCD, "%d.%dC/", CELL_TMP / 100, CELL_TMP / 10 % 10);
+          //          sprintf(buf_LCD, "%d.%dC/", CELL_TMP / 100, CELL_TMP / 10 % 10); // One decimal
+          sprintf(buf_LCD, "%d.%02dC/", CELL_TMP / 100, CELL_TMP % 100); // Two decimals (add "02" for two digit with leading zero)
           lcd.print("BAT ");
           lcd.print(buf_LCD);
           lcd.print(TEC_T2, 1);
           lcd.print("C ");
+          //          lcd.setCursor(0, 1);
+          //          lcd.print("TEC ");
+          //          lcd.print(TEC_T1, 1);
+          //          lcd.print("C/");
+          //          lcd.print(TEC_T0, 1);
+          //          lcd.print("C ");
           lcd.setCursor(0, 1);
-          lcd.print("TEC ");
-          lcd.print(TEC_T1, 1);
-          lcd.print("C/");
-          lcd.print(TEC_T0, 1);
-          lcd.print("C ");
+          lcd.print("PWM ");
+          lcd.print(TEC_pwm);
+          if (CELL_TMP_CHANGE < 0)             // Temp going down
+            lcd.print(" DN ");
+          if (CELL_TMP_CHANGE > 0)             // Temp going up
+            lcd.print(" UP ");
+          if (CELL_TMP_CHANGE == 0)            // Temp stable
+            lcd.print(" NO ");
+          lcd.print(CELL_TMP_CHANGE);          // DEBUG TEST
+          lcd.print("   ");
         }
       }
     }
-    if (kmh > 0)                              // do not continue if zero km/t
+    if (kmh > 0)                               // do not continue if zero km/t
     {
-      Whkm_count = (Whkm + Whkm_count);       // add/subtract to counter (for average Wh/km calculation)
-      loop_count++;                           // Increment the counter
+      Whkm_count = (Whkm + Whkm_count);        // add/subtract to counter (for average Wh/km calculation)
+      loop_count++;                            // Increment the counter
     }
     CAN_COUNT++;
-    if (CAN_COUNT > 1)                        // CAN data counter for LED and average CELL_TMP
+    if (CAN_COUNT > 1)                         // CAN data counter for LED and average CELL_TMP
     {
       digitalWrite(led, LOW);
-      CAN_COUNT = 0;                          // CAN data counter reset
+      CAN_COUNT = 0;                           // CAN data counter reset
     }
   }
 }
